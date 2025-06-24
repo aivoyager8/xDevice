@@ -367,6 +367,179 @@ typedef struct {
 
 ---
 
+## ADR-007: 动态存储后端管理与故障转移
+
+**日期**: 2025-06-24
+**状态**: 已接受
+**决策者**: 开发团队
+
+### 背景
+在多节点分布式环境中，每个节点可能配置多种存储后端（NVMe-oF、NFS、本地存储）。需要一套机制能够：
+1. **动态选择**最优的后端组合（如从30+候选中选择3个活跃）
+2. **自动故障转移**，当活跃后端故障时自动替换
+3. **零停机变更**，支持运行时后端切换
+4. **智能负载均衡**，基于性能指标优化选择
+
+### 决策
+设计并实现动态存储后端管理系统，包含以下核心组件：
+
+#### 1. **候选后端池管理**
+- 支持10+节点，每节点多种后端类型
+- 实时健康监控和性能指标收集
+- 热配置更新，运行时添加/移除候选
+
+#### 2. **智能选择算法**
+- 多因子评分：延迟(40%) + 带宽(30%) + 可靠性(20%) + 负载(10%)
+- 动态权重调整，适应不同工作负载
+- 避免频繁切换的稳定性机制
+
+#### 3. **零停机故障转移**
+- 秒级故障检测（连续3次失败触发）
+- 三阶段平滑切换：添加新后端 → 数据迁移 → 移除旧后端
+- 预热机制确保新后端就绪
+
+#### 4. **全链路监控**
+- 多层次健康检查：基础连通性、性能基准、压力测试
+- 实时性能指标：延迟、IOPS、带宽、错误率
+- 自动告警：高故障率、低可用性、高延迟
+
+### 架构设计
+
+```c
+// 核心数据结构
+typedef struct {
+    backend_node_t *candidate_nodes;     // 候选节点池
+    active_backend_config_t active_config; // 活跃后端配置
+    
+    struct {
+        pthread_t monitor_thread;        // 健康监控线程
+        pthread_t failover_thread;       // 故障转移线程
+    } workers;
+    
+    struct {
+        uint64_t failover_count;         // 故障转移统计
+        uint64_t backend_switches;       // 后端切换统计
+        uint64_t avg_operation_latency_us; // 平均延迟
+    } stats;
+} dynamic_backend_manager_t;
+
+// 评分算法
+typedef struct {
+    double latency_score;      // 延迟评分 (反向对数)
+    double bandwidth_score;    // 带宽评分 (对数增长)
+    double reliability_score;  // 可靠性评分 (基于错误率)
+    double load_score;        // 负载评分 (当前负载)
+    double total_score;       // 加权总分
+} backend_score_t;
+```
+
+### 关键技术特性
+
+#### 健康检查策略
+- **基础检查**: 轻量级读写测试，验证连通性
+- **性能检查**: 100次4KB写入，测量延迟和错误率
+- **压力测试**: 高并发负载，验证极限性能
+- **全面检查**: 综合所有检查类型
+
+#### 故障检测机制
+- **连续失败阈值**: 3次连续失败标记为故障
+- **性能降级检测**: 延迟超过10ms或错误率>5%标记为降级
+- **恢复确认**: 连续5次成功才认为完全恢复
+
+#### 选择算法优化
+- **延迟优先**: 100μs基准，超过10ms最低分
+- **带宽评分**: 100Mbps基准，10Gbps上限
+- **可靠性惩罚**: 基于历史错误率和故障次数
+- **负载均衡**: 避免单点过载
+
+### 理由
+1. **高可用性**: 自动故障转移确保99.9%+可用性
+2. **性能优化**: 智能选择算法最大化系统性能
+3. **运维友好**: CLI工具和配置热更新简化管理
+4. **可扩展性**: 支持数十个节点和后端的大规模部署
+5. **可观测性**: 丰富的监控指标和告警机制
+
+### 配置示例
+
+```yaml
+dynamic_backend_manager:
+  target_active_backends: 3
+  health_check_interval_ms: 5000
+  
+  candidate_nodes:
+    - node_id: "node-01"
+      address: "192.168.1.101"
+      endpoints:
+        - endpoint_id: "nvmeof-01"
+          type: "nvmeof"
+          connection_string: "nvme://192.168.1.101:4420/namespace1"
+        - endpoint_id: "nfs-01"
+          type: "nfs"
+          connection_string: "nfs://192.168.1.101:/export/xdevice"
+    # ... 更多节点
+  
+  selection_policy:
+    algorithm: "weighted_score"
+    weights:
+      latency: 0.4      # 延迟权重40%
+      bandwidth: 0.3    # 带宽权重30%
+      reliability: 0.2  # 可靠性权重20%
+      load: 0.1        # 负载权重10%
+  
+  failover:
+    enable_auto_failover: true
+    failure_threshold: 3
+    recovery_threshold: 5
+    failover_timeout_ms: 30000
+```
+
+### 管理接口
+
+```bash
+# 查看候选后端
+xdevice-cli backend list-candidates
+
+# 查看活跃后端
+xdevice-cli backend list-active
+
+# 强制故障转移
+xdevice-cli backend failover <failed_backend> [replacement_backend]
+
+# 重载配置
+xdevice-cli backend reload-config
+
+# 查看监控指标
+xdevice-cli backend metrics
+```
+
+### 后果
+- **正面影响**:
+  - 大幅提升系统可用性和容错能力
+  - 自动化运维，减少人工干预
+  - 智能负载分布，优化整体性能
+  - 支持大规模部署和动态扩容
+
+- **负面影响**:
+  - 增加系统复杂度和内存开销
+  - 需要额外的监控和管理组件
+  - 故障转移过程中可能有短暂性能影响
+
+- **缓解措施**:
+  - 详细的设计文档和测试用例
+  - 渐进式部署和配置验证
+  - 完善的监控告警和故障排查工具
+  - 可配置的资源限制和性能调优
+
+### 适用场景
+- ✅ 多节点集群环境（3-50个节点）
+- ✅ 混合存储后端部署
+- ✅ 要求高可用性的生产环境
+- ✅ 需要自动运维的大规模系统
+- ❌ 单节点简单部署
+- ❌ 对延迟极其敏感的实时系统
+
+---
+
 ## 决策状态说明
 
 - **提议**: 决策正在考虑中

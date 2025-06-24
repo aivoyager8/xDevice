@@ -200,6 +200,7 @@ xDevice是一个专门为WAL（Write-Ahead Logging）场景优化的高性能分
 - ✅ [存储引擎设计](storage_engine_design.md) - 底层存储引擎架构
 - ✅ [Raft存储管理](raft_storage_management.md) - WAL生命周期导向的存储优化
 - ✅ [WAL优化本地后端](wal_optimized_local_backend.md) - 专门针对WAL场景的本地存储优化
+- ✅ [动态后端管理](dynamic_backend_management.md) - 多后端选择与自动故障转移
 
 ### 5.2 实现指南文档
 - 📋 [API接口规范](api_specification.md) - 对外接口定义

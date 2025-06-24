@@ -8,6 +8,7 @@ XDevice是一个专门为Write-Ahead Logging (WAL)场景优化的高性能分布
 - **WAL生命周期优化**: 段式管理，快速失效回收，零碎片化设计
 - **分布式高可用**: 基于Raft协议的强一致性保证，进程内多实例架构
 - **多存储后端**: 支持NVMe-oF、NFS、本地文件，统一存储抽象
+- **动态后端管理**: 智能选择最优后端，自动故障转移，零停机运维
 - **智能调优**: 自适应性能调优，生命周期感知的存储管理
 - **超低延迟**: 专用快速写入路径，批量操作优化，直接I/O支持
 
@@ -60,6 +61,7 @@ sudo make install
 
 ## 快速开始
 
+### 基本使用
 ```bash
 # 启动节点
 ./bin/xdevice-node --config=config/node1.conf
@@ -69,6 +71,21 @@ sudo make install
 
 # 挂载设备
 ./bin/xdevice-cli mount --device=wal-device --mount-point=/mnt/wal
+```
+
+### 多后端动态管理
+```bash
+# 查看所有候选后端
+./bin/xdevice-cli backend list-candidates
+
+# 查看当前活跃后端
+./bin/xdevice-cli backend list-active
+
+# 强制故障转移
+./bin/xdevice-cli backend failover nvmeof-01 nvmeof-02
+
+# 重载后端配置
+./bin/xdevice-cli backend reload-config
 ```
 
 ## 配置示例
