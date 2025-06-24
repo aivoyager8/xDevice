@@ -1,0 +1,41 @@
+# XDevice C Project Dependencies
+# 
+# This file lists the system dependencies required for building XDevice.
+# Install these using your system package manager before building.
+
+# Build tools
+build-essential
+make
+gcc
+g++
+
+# Development libraries
+libevent-dev
+libssl-dev
+zlib1g-dev
+liblz4-dev
+libzstd-dev
+uuid-dev
+
+# Optional dependencies for enhanced features
+liburing-dev      # io_uring support (Linux 5.1+)
+libnuma-dev       # NUMA optimization
+librdmacm-dev     # RDMA support
+libibverbs-dev    # InfiniBand support
+
+# Testing and debugging
+valgrind
+gdb
+strace
+
+# Documentation tools
+doxygen
+graphviz
+
+# Ubuntu/Debian installation:
+# sudo apt-get update
+# sudo apt-get install build-essential libevent-dev libssl-dev zlib1g-dev liblz4-dev libzstd-dev uuid-dev
+
+# CentOS/RHEL installation:
+# sudo yum groupinstall "Development Tools"
+# sudo yum install libevent-devel openssl-devel zlib-devel lz4-devel libzstd-devel libuuid-devel
